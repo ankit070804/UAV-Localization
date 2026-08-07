@@ -121,11 +121,34 @@ print("\n====================================================")
 print("Verified XAI Reasoning")
 print("====================================================\n")
 
-for fact in facts:
+for i, fact in enumerate(facts, start=1):
 
-    print(f"• {fact['reason']}")
-    print(f"  Effect : {fact['effect']}")
-    print()
+    print(f"Feature {i}")
+    print("-" * 55)
+
+    print(f"Feature Name      : {fact['feature']}")
+    print(f"Measured Value    : {fact['value']:.3f}")
+
+    print(f"\nObservation")
+    print(f"  {fact['observation']}")
+
+    print(f"\nDomain Meaning")
+    print(f"  {fact['domain_meaning']}")
+
+    print(f"\nModel Influence")
+    print(f"  {fact['model_influence']}")
+
+    print(f"\nContribution")
+    print(f"  {fact['direction']}")
+
+    print("\n")
+
+print("====================================================")
+print("Recommendations")
+print("====================================================")
+
+for r in recommendations:
+    print(f"• {r}")
 
 # =====================================================
 # LLM REPORT
