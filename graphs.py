@@ -30,6 +30,16 @@ import shap
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
+from config import (
+    TRAINING_DATASET_CSV,
+    TARGET_COLUMN,
+    MODEL_PATH,
+    FEATURE_NAMES_PATH,
+    TEST_SIZE,
+    RANDOM_STATE,
+    drop_columns,
+)
+
 # ======================================================================
 # STYLE
 # ======================================================================
@@ -73,17 +83,13 @@ print("=" * 60)
 print("Loading dataset and trained model")
 print("=" * 60)
 
-df = pd.read_csv("training_dataset_all.csv")
-model = joblib.load("rf_localization.pkl")
-feature_names = joblib.load("feature_names.pkl")
+df = pd.read_csv(TRAINING_DATASET_CSV)
+model = joblib.load(MODEL_PATH)
+feature_names = joblib.load(FEATURE_NAMES_PATH)
 
-TARGET = "localization_error"
+TARGET = TARGET_COLUMN
 
-DROP_COLUMNS = [
-    "frame", "sequence", "ground_truth_distance",
-    "estimated_distance", "translation_distance", "matches", TARGET
-]
-DROP_COLUMNS = [c for c in DROP_COLUMNS if c in df.columns]
+DROP_COLUMNS = drop_columns(df)
 
 X = df.drop(columns=DROP_COLUMNS)
 y = df[TARGET]
@@ -94,7 +100,7 @@ print("Feature matrix:", X.shape)
 
 # Recreate the same train/test split used in train_model.py
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.20, random_state=42, shuffle=True
+    X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE, shuffle=True
 )
 
 pred_test = model.predict(X_test)
@@ -104,21 +110,9 @@ r2 = r2_score(y_test, pred_test)
 
 print(f"\nMAE={mae:.4f}  RMSE={rmse:.4f}  R2={r2:.4f}")
 
-# Semantic class label lookup (from reasoning_engine.py)
-CLASS_NAMES = {
-    "class_28_percent": "Furniture", "class_229_percent": "Shelf",
-    "class_180_percent": "Carpet", "class_157_percent": "Wall",
-    "class_64_percent": "Floor", "class_70_percent": "Door",
-    "class_87_percent": "Window", "class_115_percent": "Ceiling",
-    "class_125_percent": "Picture", "class_143_percent": "Table",
-    "class_8_percent": "Chair", "class_27_percent": "Cabinet",
-    "class_59_percent": "Curtain", "class_74_percent": "Desk",
-    "class_119_percent": "Monitor", "class_123_percent": "Sofa",
-    "class_132_percent": "Plant", "class_146_percent": "Bed",
-    "class_175_percent": "Door Frame", "class_199_percent": "Books",
-    "class_205_percent": "Lamp", "class_208_percent": "Computer",
-    "class_214_percent": "Television", "class_239_percent": "Misc.",
-}
+# Semantic class label lookup — now the single shared mapping in
+# class_names.py instead of a fourth local copy of it.
+from class_names import CLASS_NAMES
 
 VISUAL_FEATS = ["brightness", "contrast", "blur", "orb_features", "edge_density"]
 DEPTH_FEATS = ["mean_depth", "std_depth", "min_depth", "max_depth",

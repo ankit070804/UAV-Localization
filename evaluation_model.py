@@ -8,57 +8,61 @@ from sklearn.metrics import (
     r2_score
 )
 
+from config import (
+    TRAINING_DATASET_CSV,
+    TARGET_COLUMN,
+    MODEL_PATH,
+    SPLIT_INDEX_PATH,
+    drop_columns,
+)
+
 # ============================================
 # LOAD DATASET
+# ============================================
+#
+# NOTE ON A BUG THAT USED TO BE HERE:
+# This script previously evaluated the model on the ENTIRE
+# training_dataset_all.csv, which includes the exact rows the
+# model was trained on. That gave an inflated R^2 (~0.97) that
+# looked better than train_model.py's own honest test-split
+# score (~0.92). It now loads the row indices train_model.py
+# held out and scores ONLY on those, so the number reported
+# here is a real out-of-sample metric.
 # ============================================
 
 print("=" * 50)
 print("Loading Dataset...")
 print("=" * 50)
 
-df = pd.read_csv("training_dataset_all.csv")
+df = pd.read_csv(TRAINING_DATASET_CSV)
 
 print("Dataset Shape :", df.shape)
 
-print("\nColumns:\n")
-for col in df.columns:
-    print(col)
+TARGET = TARGET_COLUMN
 
 # ============================================
-# TARGET COLUMN
+# RESTRICT TO THE HELD-OUT TEST ROWS
 # ============================================
 
-TARGET = "localization_error"
-
-# ============================================
-# DROP ONLY EXISTING COLUMNS
-# ============================================
-
-DROP_COLUMNS = [
-    "frame",
-    "sequence",
-    "ground_truth_distance",
-    "estimated_distance",
-    "translation_distance",
-    "matches",
-    TARGET
-]
-
-DROP_COLUMNS = [
-    col for col in DROP_COLUMNS
-    if col in df.columns
-]
-
-print("\nDropped Columns:")
-print(DROP_COLUMNS)
+try:
+    test_indices = joblib.load(SPLIT_INDEX_PATH)
+    df_eval = df.loc[test_indices]
+    print(f"\nEvaluating on the {len(df_eval)} held-out test rows "
+          f"saved by train_model.py ({SPLIT_INDEX_PATH}).")
+except FileNotFoundError:
+    df_eval = df
+    print(
+        f"\nWARNING: {SPLIT_INDEX_PATH} not found (run train_model.py first). "
+        "Falling back to evaluating on the full dataset — this INCLUDES "
+        "training rows and will overstate performance."
+    )
 
 # ============================================
 # FEATURES / LABELS
 # ============================================
 
-X = df.drop(columns=DROP_COLUMNS)
-
-y = df[TARGET]
+X = df_eval.drop(columns=drop_columns(df_eval))
+y = df_eval[TARGET]
 
 print("\nNumber of Features :", X.shape[1])
 
@@ -68,7 +72,7 @@ print("\nNumber of Features :", X.shape[1])
 
 print("\nLoading trained model...")
 
-model = joblib.load("rf_localization.pkl")
+model = joblib.load(MODEL_PATH)
 
 print("Done!")
 
@@ -95,7 +99,7 @@ r2 = r2_score(
 )
 
 print("\n" + "=" * 50)
-print("MODEL EVALUATION")
+print("MODEL EVALUATION (held-out test rows only)")
 print("=" * 50)
 
 print(f"MAE  : {mae:.6f}")
@@ -106,7 +110,7 @@ print(f"R²   : {r2:.6f}")
 # SAVE RESULTS
 # ============================================
 
-results = df.copy()
+results = df_eval.copy()
 
 results["predicted_error"] = pred
 
@@ -125,7 +129,7 @@ print("\nSaved : evaluation_results.csv")
 # ACTUAL VS PREDICTED
 # ============================================
 
-plt.figure(figsize=(7,7))
+plt.figure(figsize=(7, 7))
 
 plt.scatter(
     y,
@@ -146,7 +150,7 @@ plt.xlabel("Actual Localization Error")
 
 plt.ylabel("Predicted Localization Error")
 
-plt.title("Actual vs Predicted")
+plt.title("Actual vs Predicted (Held-Out Test Set)")
 
 plt.tight_layout()
 
@@ -155,13 +159,11 @@ plt.savefig(
     dpi=300
 )
 
-plt.show()
-
 # ============================================
 # ERROR HISTOGRAM
 # ============================================
 
-plt.figure(figsize=(7,5))
+plt.figure(figsize=(7, 5))
 
 plt.hist(
     results["absolute_error"],
@@ -172,7 +174,7 @@ plt.xlabel("Absolute Error (m)")
 
 plt.ylabel("Frequency")
 
-plt.title("Prediction Error Distribution")
+plt.title("Prediction Error Distribution (Held-Out Test Set)")
 
 plt.tight_layout()
 
@@ -181,23 +183,21 @@ plt.savefig(
     dpi=300
 )
 
-plt.show()
-
 # ============================================
 # ERROR PER SAMPLE
 # ============================================
 
-plt.figure(figsize=(12,5))
+plt.figure(figsize=(12, 5))
 
 plt.plot(
     results["absolute_error"].values
 )
 
-plt.xlabel("Frame")
+plt.xlabel("Sample (held-out test set order)")
 
 plt.ylabel("Absolute Error")
 
-plt.title("Localization Error per Sample")
+plt.title("Localization Error per Sample (Held-Out Test Set)")
 
 plt.tight_layout()
 
@@ -205,8 +205,6 @@ plt.savefig(
     "sample_error.png",
     dpi=300
 )
-
-plt.show()
 
 # ============================================
 # FEATURE IMPORTANCE
@@ -230,7 +228,7 @@ importance.to_csv(
     index=False
 )
 
-plt.figure(figsize=(10,8))
+plt.figure(figsize=(10, 8))
 
 top20 = importance.head(20)
 
@@ -249,8 +247,6 @@ plt.savefig(
     "feature_importance.png",
     dpi=300
 )
-
-plt.show()
 
 print("\nSaved:")
 print("actual_vs_predicted.png")

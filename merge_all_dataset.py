@@ -1,11 +1,13 @@
 import pandas as pd
 
+from config import ALL_FEATURES_CSV, ALL_LABELS_CSV, TRAINING_DATASET_CSV
+
 # ============================================
 # LOAD FILES
 # ============================================
 
-features = pd.read_csv("all_features.csv")
-labels = pd.read_csv("all_localization_labels.csv")
+features = pd.read_csv(ALL_FEATURES_CSV)
+labels = pd.read_csv(ALL_LABELS_CSV)
 
 print("=" * 50)
 print("Loaded Files")
@@ -50,7 +52,7 @@ training.fillna(0, inplace=True)
 # ============================================
 
 training.to_csv(
-    "training_dataset_all.csv",
+    TRAINING_DATASET_CSV,
     index=False
 )
 

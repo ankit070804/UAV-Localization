@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+
+# Generated data / model artifacts — reproducible by running the
+# pipeline scripts, not source, so they shouldn't be tracked in git.
+*.csv
+*.pkl
+*.png
+graphs/

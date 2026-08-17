@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import joblib
 import shap
@@ -6,21 +7,27 @@ from dataset_loader import TartanAirDatasetLoader
 from feature_extractor import FeatureExtractor
 from semantic_extractor import SemanticExtractor
 from depth_features import DepthFeatureExtractor
+from config import DATASET_ROOT, DEMO_SEQUENCE, DEMO_FRAME, MODEL_PATH, FEATURE_NAMES_PATH
+from class_names import get_class_name
 
 # =====================================================
 # LOAD MODEL
 # =====================================================
 
-model = joblib.load("rf_localization.pkl")
-feature_names = joblib.load("feature_names.pkl")
+model = joblib.load(MODEL_PATH)
+feature_names = joblib.load(FEATURE_NAMES_PATH)
 explainer = shap.TreeExplainer(model)
 
 # =====================================================
 # DATASET
+#
+# Was hardcoded to a Windows path + a fixed sequence (P006).
+# Now driven by config.py — override with the UAV_DATASET_ROOT
+# / UAV_DEMO_SEQUENCE / UAV_DEMO_FRAME environment variables.
 # =====================================================
 
 dataset = TartanAirDatasetLoader(
-    r"E:\7th sem\major project 01\TartanAir\ArchVizTinyHouseDay\Data_easy\P006"
+    os.path.join(DATASET_ROOT, DEMO_SEQUENCE)
 )
 
 feature_extractor = FeatureExtractor()
@@ -31,7 +38,7 @@ depth_extractor = DepthFeatureExtractor()
 # SELECT FRAME
 # =====================================================
 
-frame = 20
+frame = DEMO_FRAME
 sample = dataset.get_sample(frame)
 
 # =====================================================
@@ -109,59 +116,36 @@ print("\nTop Influencing Factors\n")
 print(top[["Feature", "Value", "SHAP"]])
 
 # =====================================================
-# XAI REASONING
+# LLM REPORT — direct SHAP interpretation
+#
+# No reasoning_engine.py in this path: the LLM gets the raw top-N
+# SHAP features (name, value, signed contribution) for THIS frame
+# and does its own interpretation, instead of rephrasing a fixed
+# per-feature template. Feature names are translated to
+# human-readable form (e.g. "class_180_percent" -> "Carpet") via
+# class_names.py, but nothing about their meaning is pre-decided
+# for the LLM.
 # =====================================================
 
-from reasoning_engine import explain
-from llm_engine import generate_report
+from llm_engine import generate_report_direct
 
-facts, recommendations = explain(top)
+top_features_for_llm = [
+    {
+        "name": get_class_name(row["Feature"]),
+        "value": float(row["Value"]),
+        "shap": float(row["SHAP"]),
+        "raw_name": row["Feature"],
+    }
+    for _, row in top.iterrows()
+]
 
 print("\n====================================================")
-print("Verified XAI Reasoning")
+print("LLM Generated Report (direct SHAP interpretation)")
 print("====================================================\n")
 
-for i, fact in enumerate(facts, start=1):
-
-    print(f"Feature {i}")
-    print("-" * 55)
-
-    print(f"Feature Name      : {fact['feature']}")
-    print(f"Measured Value    : {fact['value']:.3f}")
-
-    print(f"\nObservation")
-    print(f"  {fact['observation']}")
-
-    print(f"\nDomain Meaning")
-    print(f"  {fact['domain_meaning']}")
-
-    print(f"\nModel Influence")
-    print(f"  {fact['model_influence']}")
-
-    print(f"\nContribution")
-    print(f"  {fact['direction']}")
-
-    print("\n")
-
-print("====================================================")
-print("Recommendations")
-print("====================================================")
-
-for r in recommendations:
-    print(f"• {r}")
-
-# =====================================================
-# LLM REPORT
-# =====================================================
-
-print("\n====================================================")
-print("LLM Generated Report")
-print("====================================================\n")
-
-report = generate_report(
+report = generate_report_direct(
     prediction,
-    facts,
-    recommendations
+    top_features_for_llm
 )
 
 print(report)

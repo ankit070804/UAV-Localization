@@ -5,22 +5,16 @@ import pandas as pd
 
 from dataset_loader import TartanAirDatasetLoader
 from pose_analyser import PoseAnalyzer
+from config import DATASET_ROOT, SEQUENCES, ALL_LABELS_CSV
 
 # ======================================================
 # DATASET ROOT
+#
+# Was hardcoded to a Windows-only path in every script. Now
+# comes from config.py, overridable via UAV_DATASET_ROOT.
 # ======================================================
 
-ROOT = r"E:\7th sem\major project 01\TartanAir\ArchVizTinyHouseDay\Data_easy"
-
-SEQUENCES = [
-    "P000",
-    "P001",
-    "P002",
-    "P003",
-    "P004",
-    "P005",
-    "P006"
-]
+ROOT = DATASET_ROOT
 
 pose_analyzer = PoseAnalyzer()
 
@@ -88,8 +82,8 @@ df = pd.DataFrame(rows)
 print(df.shape)
 
 df.to_csv(
-    "all_localization_labels.csv",
+    ALL_LABELS_CSV,
     index=False
 )
 
-print("\nSaved all_localization_labels.csv")
+print(f"\nSaved {ALL_LABELS_CSV}")

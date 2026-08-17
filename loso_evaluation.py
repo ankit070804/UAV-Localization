@@ -8,29 +8,35 @@ from sklearn.metrics import (
     r2_score
 )
 
+from config import (
+    TRAINING_DATASET_CSV,
+    TARGET_COLUMN,
+    MODEL_PATH,
+    FEATURE_NAMES_PATH,
+    RANDOM_STATE,
+    drop_columns,
+)
+
 # ============================================
 # LOAD DATASET
 # ============================================
 
-df = pd.read_csv("training_dataset_all.csv")
+df = pd.read_csv(TRAINING_DATASET_CSV)
 
 print("="*60)
 print("Leave-One-Sequence-Out Evaluation")
 print("="*60)
+print(
+    "This is the most trustworthy accuracy number in the project: "
+    "each sequence is held out completely, so it measures how well "
+    "the model generalizes to an environment it never trained on "
+    "(unlike train_model.py's random row split, which can leak "
+    "similar frames from the same sequence into both train and test)."
+)
 
-TARGET = "localization_error"
+TARGET = TARGET_COLUMN
 
-DROP_COLUMNS = [
-    "frame",
-    "sequence",
-    "ground_truth_distance",
-    "estimated_distance",
-    "translation_distance",
-    "matches",
-    TARGET
-]
-
-DROP_COLUMNS = [c for c in DROP_COLUMNS if c in df.columns]
+DROP_COLUMNS = drop_columns(df)
 
 # ============================================
 # ALL SEQUENCES
@@ -61,7 +67,7 @@ for seq in sequences:
 
     model = RandomForestRegressor(
         n_estimators=300,
-        random_state=42,
+        random_state=RANDOM_STATE,
         n_jobs=-1
     )
 
@@ -123,14 +129,14 @@ y = df[TARGET]
 
 final_model = RandomForestRegressor(
     n_estimators=300,
-    random_state=42,
+    random_state=RANDOM_STATE,
     n_jobs=-1
 )
 
 final_model.fit(X, y)
 
-joblib.dump(final_model, "rf_localization.pkl")
-joblib.dump(list(X.columns), "feature_names.pkl")
+joblib.dump(final_model, MODEL_PATH)
+joblib.dump(list(X.columns), FEATURE_NAMES_PATH)
 
 print("Saved:")
 print("rf_localization.pkl")

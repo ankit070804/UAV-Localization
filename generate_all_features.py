@@ -6,26 +6,16 @@ from feature_extractor import FeatureExtractor
 from semantic_extractor import SemanticExtractor
 from depth_features import DepthFeatureExtractor
 from pose_analyser import PoseAnalyzer
+from config import DATASET_ROOT, SEQUENCES, ALL_FEATURES_CSV
 
 # ===========================================================
 # DATASET ROOT
+#
+# Was hardcoded to a Windows-only path in every script. Now
+# comes from config.py, overridable via UAV_DATASET_ROOT.
 # ===========================================================
 
-ROOT = r"E:\7th sem\major project 01\TartanAir\ArchVizTinyHouseDay\Data_easy"
-
-# ===========================================================
-# SEQUENCES
-# ===========================================================
-
-SEQUENCES = [
-    "P000",
-    "P001",
-    "P002",
-    "P003",
-    "P004",
-    "P005",
-    "P006"
-]
+ROOT = DATASET_ROOT
 
 feature_extractor = FeatureExtractor()
 semantic_extractor = SemanticExtractor()
@@ -85,8 +75,8 @@ df.fillna(0, inplace=True)
 print(df.shape)
 
 df.to_csv(
-    "all_features.csv",
+    ALL_FEATURES_CSV,
     index=False
 )
 
-print("\nSaved all_features.csv")
+print(f"\nSaved {ALL_FEATURES_CSV}")

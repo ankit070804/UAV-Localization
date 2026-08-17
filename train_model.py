@@ -10,11 +10,22 @@ from sklearn.metrics import (
     r2_score
 )
 
+from config import (
+    TRAINING_DATASET_CSV,
+    TARGET_COLUMN,
+    MODEL_PATH,
+    FEATURE_NAMES_PATH,
+    SPLIT_INDEX_PATH,
+    TEST_SIZE,
+    RANDOM_STATE,
+    drop_columns,
+)
+
 # =====================================
 # LOAD DATASET
 # =====================================
 
-df = pd.read_csv("training_dataset_all.csv")
+df = pd.read_csv(TRAINING_DATASET_CSV)
 
 print("=" * 50)
 print("Training Dataset")
@@ -22,21 +33,9 @@ print("=" * 50)
 
 print("Shape :", df.shape)
 
-TARGET = "localization_error"
+TARGET = TARGET_COLUMN
 
-DROP_COLUMNS = [
-    "frame",
-    "sequence",
-    "ground_truth_distance",
-    "estimated_distance",
-    "translation_distance",
-    "matches",
-    TARGET
-]
-
-DROP_COLUMNS = [c for c in DROP_COLUMNS if c in df.columns]
-
-X = df.drop(columns=DROP_COLUMNS)
+X = df.drop(columns=drop_columns(df))
 y = df[TARGET]
 
 print("\nNumber of Features :", X.shape[1])
@@ -48,13 +47,18 @@ print("\nNumber of Features :", X.shape[1])
 X_train, X_test, y_train, y_test = train_test_split(
     X,
     y,
-    test_size=0.20,
-    random_state=42,
+    test_size=TEST_SIZE,
+    random_state=RANDOM_STATE,
     shuffle=True
 )
 
 print("\nTraining Samples :", len(X_train))
 print("Testing Samples  :", len(X_test))
+
+# Save the held-out row indices so evaluation_model.py can score the
+# model on the SAME rows it never saw during training, instead of
+# accidentally re-scoring on the full (train+test) dataset.
+joblib.dump(list(X_test.index), SPLIT_INDEX_PATH)
 
 # =====================================
 # MODEL
@@ -129,12 +133,12 @@ importance.to_csv(
 
 joblib.dump(
     model,
-    "rf_localization.pkl"
+    MODEL_PATH
 )
 
 joblib.dump(
     list(X.columns),
-    "feature_names.pkl"
+    FEATURE_NAMES_PATH
 )
 
 print("\nModel Saved")

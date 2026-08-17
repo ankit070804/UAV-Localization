@@ -13,6 +13,13 @@ class TartanAirDatasetLoader:
 
         self.dataset_path = dataset_path
 
+        if not os.path.isdir(dataset_path):
+            raise FileNotFoundError(
+                f"Dataset folder not found: {dataset_path}\n"
+                "Set the correct location via the UAV_DATASET_ROOT "
+                "environment variable (see config.py)."
+            )
+
         # Folder paths
         self.rgb_path = os.path.join(dataset_path, "image_lcam_front")
         self.depth_path = os.path.join(dataset_path, "depth_lcam_front")
@@ -20,6 +27,12 @@ class TartanAirDatasetLoader:
 
         # Pose file
         self.pose_path = os.path.join(dataset_path, "pose_lcam_front.txt")
+
+        for required in (self.rgb_path, self.depth_path, self.seg_path, self.pose_path):
+            if not os.path.exists(required):
+                raise FileNotFoundError(
+                    f"Expected TartanAir file/folder missing: {required}"
+                )
 
         # Load pose data
         self.poses = np.loadtxt(self.pose_path)
