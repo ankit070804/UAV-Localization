@@ -8,48 +8,13 @@ The system doesn't just predict *how much* localization error to expect — it e
 
 ## How it works
 
-```
-TartanAir dataset (RGB + Depth + Segmentation + Pose)
-              │
-              ▼
-   ┌─────────────────────────┐
-   │   Feature Extraction     │
-   │  • Visual (ORB, blur,    │
-   │    contrast, brightness) │
-   │  • Semantic (class %)    │
-   │  • Depth (mean, entropy) │
-   │  • Motion (dx, dy, dz)   │
-   └─────────────────────────┘
-              │
-              ▼
-   ┌─────────────────────────┐
-   │  Random Forest Regressor │
-   │  predicts localization   │
-   │  error (meters)          │
-   └─────────────────────────┘
-              │
-              ▼
-   ┌─────────────────────────┐
-   │   SHAP Explainer          │
-   │  → top contributing       │
-   │    features                │
-   └─────────────────────────┘
-              │
-              ▼
-   ┌─────────────────────────┐
-   │  Reasoning Engine          │
-   │  (reasoning_engine.py)     │
-   │  SHAP feature → verified   │
-   │  domain fact + recommend.  │
-   └─────────────────────────┘
-              │
-              ▼
-   ┌─────────────────────────┐
-   │  LLM Report Generator      │
-   │  (llm_engine.py, Ollama /  │
-   │   llama3.2)                │
-   │  → Professional XAI report │
-   └─────────────────────────┘
+```mermaid
+flowchart TD
+    A["TartanAir dataset<br/>RGB + Depth + Segmentation + Pose"] --> B["Feature Extraction<br/>Visual: ORB, blur, contrast, brightness<br/>Semantic: class %<br/>Depth: mean, entropy<br/>Motion: dx, dy, dz"]
+    B --> C["Random Forest Regressor<br/>predicts localization error (meters)"]
+    C --> D["SHAP Explainer<br/>top contributing features"]
+    D --> E["Reasoning Engine (reasoning_engine.py)<br/>SHAP feature → verified domain fact + recommendation"]
+    E --> F["LLM Report Generator (llm_engine.py)<br/>Ollama / llama3.2<br/>→ Professional XAI report"]
 ```
 
 The key design principle: **the LLM never reasons on its own about causes**. It only rewrites facts that the `reasoning_engine.py` module has already verified from SHAP output, into plain, professional English. This prevents hallucinated explanations.
@@ -192,3 +157,7 @@ Risk Level (Low / Medium / High)
 - `__pycache__/` is currently committed to the repo; consider adding a `.gitignore` to exclude it along with large generated artifacts (`.pkl`, `.csv`, `.png`) if you don't want them version-controlled.
 
 ---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
