@@ -1,4 +1,5 @@
 import os
+import re
 import ollama
 import pandas as pd
 
@@ -76,11 +77,28 @@ Hard rules:
   alternative algorithms/techniques — unless one of the given features
   directly states it. This is unconditional: it applies to both sections
   you write, with no exceptions. A recommendation may only reference the
-  specific features and values you were given (e.g. "reduce sideways
-  motion" is fine because dx was given; "increase camera resolution" is
+  specific features and values you were given (e.g. "reduce motion along
+  dx" is fine because dx was given; "increase camera resolution" is
   not, because camera resolution was never given). If you don't have
   enough information to explain WHY a feature has the effect it does, say
   the effect is observed without asserting an unverified mechanism for it.
+- Never invent a system component, mechanism, or internal process that
+  wasn't given to you as a feature — e.g. do not refer to a "compensation
+  mechanism", "error model", "correction system", or any other internal
+  process of the localization system. You were only given feature values
+  and their effect on the prediction; you were not given, and must not
+  assume, anything about how the system internally works.
+- Never invent a physical property of an object that wasn't given to you.
+  A segmentation percentage (e.g. "Carpet: 1.4") only tells you how much
+  of the image an object occupies — it does not tell you the object is
+  "solid", "reflective", "cluttered", or anything else about its physical
+  nature. Do not assert such properties even as a hedge.
+- Do not invent a rule about what a value "should" do. You are only told
+  the actual direction (increases/decreases) for each feature — you were
+  not given, and must not assume, any general rule like "a negative value
+  should increase the error." If a direction feels surprising, say so
+  plainly ("this direction may seem counter-intuitive") without inventing
+  a reason it should have gone the other way.
 - Every recommendation must follow logically from the features you were
   given for this frame.
 - Never mention "SHAP", "Random Forest", "machine learning", "SLAM",
@@ -89,6 +107,47 @@ Hard rules:
   (not SLAM); if you need to refer to it, call it "visual feature
   matching" only if a given feature name (e.g. orb features) requires it.
 - Be concise, professional, and direct.
+
+Here are worked examples showing the difference between grounded and
+ungrounded reasoning. Study the BAD example closely — every sentence in
+it is a realistic mistake seen in previous runs of this exact prompt.
+Note the GOOD example is a single hedged sentence only — it does not
+restate the value, magnitude, or direction, because those are already
+stated elsewhere in the final report and are not your job to write.
+
+GOOD example (a percentage-of-image feature, "class_87_percent" /
+"Window", value 1.932, SMALL, direction: increases error):
+
+  "This may suggest the visual matching process finds this particular
+  area harder to track consistently between frames, though the
+  data here doesn't say why — only that its presence had this effect."
+
+  Why this is good: it proposes a mechanism but clearly hedges it, never
+  restates the value/magnitude/direction (already handled elsewhere),
+  and does not claim to know anything about the window's physical
+  properties (reflectivity, size, obstruction, etc.) beyond what it was
+  given.
+
+BAD example (do not write like this):
+
+  "Window: A small fraction of 1.932 suggests the window is a small,
+  clear opening, and this increased the predicted error. Since a
+  negative value should typically increase error, and this instead
+  decreases it, the system's error-compensation mechanism may be
+  correcting for this automatically. Consider adjusting the system's
+  handling of reflective, unobstructed surfaces."
+
+  Why this is bad, sentence by sentence: it restates the value and
+  direction ("this increased the predicted error") which is not your
+  job and risks contradicting the direction actually given for this
+  feature. "the window is a small, clear opening" invents a physical
+  property never given. "a negative value should typically increase
+  error" invents a rule that was never stated — you are only ever given
+  the actual direction, never a rule about what a direction "should" be.
+  "error-compensation mechanism" invents an internal system component
+  that doesn't exist in what you were given. The recommendation about
+  "reflective, unobstructed surfaces" invents object properties and
+  follows from the invented mechanism, not from the actual feature.
 
 Output format — return ONLY these two sections, nothing else:
 
@@ -186,38 +245,121 @@ _UNGROUNDED_RECOMMENDATION_TERMS = [
     "algorithm", "processing power", "camera resolution", "lighting",
     "hardware", "threshold", "filter", "slam", "software", "firmware",
     "calibrat", "sensor fusion", "gps",
+    "compensation mechanism", "error model", "correction system",
+    "compensate", "over-compensat", "overcompensat",
+    # Same invented-physical-property terms blocked in Reasons hedges via
+    # _UNGROUNDED_HEDGE_TERMS. A recommendation can invent a property
+    # ("adjust handling of reflective... surfaces") just as easily as a
+    # hedge sentence can — observed in testing ("reflective" survived in
+    # Recommendations even though it's already blocked in Reasons).
+    "reflective", "unobstructed", "clear opening", "solid object",
+    "transparent", "translucent", "opaque",
 ]
+
+
+_LIST_ITEM_START_PATTERN = re.compile(r"^([-*•]|\d+[.)])\s*")
+
+
+def _is_list_item_start(stripped_line):
+    """
+    True if this line opens a new list item — a dash/asterisk/bullet
+    ("-", "*", "•") OR a numbered marker ("1.", "2)", etc.). The LLM has
+    been observed switching to numbered Recommendations ("1. ... 2. ...")
+    without being asked to, and every filter here used to only recognize
+    "-"/"*"/"•" as a bullet start. That meant a numbered list bypassed
+    _group_into_bullets' grouping AND sanitize_recommendations' gate
+    entirely — confirmed in testing, where a numbered recommendation
+    containing "threshold" and "filter" (both blocked terms) survived
+    completely unfiltered because it never matched the old check.
+    """
+    return bool(_LIST_ITEM_START_PATTERN.match(stripped_line))
+
+
+def _group_into_bullets(lines):
+    """
+    Groups lines into chunks so a wrapped multi-line bullet/numbered item
+    is treated as one unit instead of separate physical lines. Each chunk
+    is either:
+      - a list item: starts with "-"/"*"/"•" or a numbered marker like
+        "1.", plus any following lines that wrap it (no marker,
+        non-blank), or
+      - a single non-item line (headers, blank lines, plain prose).
+
+    Both sanitize_recommendations and strip_direction_claims used to test
+    and remove one physical line at a time. That broke two ways in
+    testing: (1) removing a flagged opening line left its wrapped
+    continuation behind as an orphan fragment with no marker, and
+    (2) worse, when the flagged word landed on a *different* physical
+    line than the trigger term (e.g. "dx" on line 1, "backwards" on the
+    wrapped line 2), neither line matched on its own and the whole item
+    slipped through unfiltered. Testing an item's full joined text as one
+    unit fixes both failure modes at once.
+    """
+
+    chunks = []
+    current = None
+
+    for line in lines:
+        stripped = line.strip()
+        is_item_start = _is_list_item_start(stripped)
+
+        if is_item_start:
+            if current is not None:
+                chunks.append(current)
+            current = [line]
+        elif stripped == "":
+            if current is not None:
+                chunks.append(current)
+                current = None
+            chunks.append([line])
+        else:
+            if current is not None:
+                current.append(line)
+            else:
+                chunks.append([line])
+
+    if current is not None:
+        chunks.append(current)
+
+    return chunks
 
 
 def sanitize_recommendations(llm_sections):
     """
-    Strips any Recommendations bullet line that mentions an ungrounded
-    technical fix (see _UNGROUNDED_RECOMMENDATION_TERMS), and notes how
-    many were removed instead of silently deleting them.
+    Strips any Recommendations item (bulleted OR numbered — see
+    _is_list_item_start) that mentions an ungrounded technical fix (see
+    _UNGROUNDED_RECOMMENDATION_TERMS), and notes how many were removed
+    instead of silently deleting them. Operates on whole items via
+    _group_into_bullets — see its docstring for why.
     """
 
     lines = llm_sections.splitlines()
-    out_lines = []
+
+    header_idx = None
+    for i, line in enumerate(lines):
+        if line.strip().lower().startswith("recommendations"):
+            header_idx = i
+            break
+
+    if header_idx is None:
+        return llm_sections
+
+    before = lines[: header_idx + 1]
+    after_chunks = _group_into_bullets(lines[header_idx + 1 :])
+
+    out_after = []
     removed = 0
-    in_recommendations = False
 
-    for line in lines:
-        stripped = line.strip()
-
-        if stripped.lower().startswith("recommendations"):
-            in_recommendations = True
-            out_lines.append(line)
-            continue
-
-        if in_recommendations and stripped.startswith(("-", "*", "•")):
-            lower = stripped.lower()
-            if any(term in lower for term in _UNGROUNDED_RECOMMENDATION_TERMS):
+    for chunk in after_chunks:
+        first = chunk[0].strip()
+        if _is_list_item_start(first):
+            joined = " ".join(l.strip() for l in chunk).lower()
+            if any(term in joined for term in _UNGROUNDED_RECOMMENDATION_TERMS):
                 removed += 1
                 continue
+        out_after.extend(chunk)
 
-        out_lines.append(line)
-
-    result = "\n".join(out_lines)
+    result = "\n".join(before + out_after)
 
     if removed:
         result += (
@@ -227,6 +369,188 @@ def sanitize_recommendations(llm_sections):
         )
 
     return result
+
+
+# describe_feature() explicitly tells the model that the real-world
+# direction dx/dy/dz point (forward, sideways, up, ...) is NOT specified
+# in this data and that it must not assert one. In testing, llama3.2
+# ignored that rule anyway — and even contradicted itself between
+# sections, e.g. calling the same dx value "backwards" in Reasons and
+# "sideways" in Recommendations within the same report. Prompt wording
+# alone hasn't reliably stopped this (same story as
+# _UNGROUNDED_RECOMMENDATION_TERMS below), so it's filtered here too.
+_AXIS_PATTERN = re.compile(
+    r"\b(dx|dy|dz|[xyz]\s*[- ]?\s*axis)\b",
+    re.IGNORECASE,
+)
+_DIRECTION_TERMS_PATTERN = re.compile(
+    r"\b(forward(s)?|backward(s)?|sideways|lateral(ly)?|leftward(s)?|"
+    r"rightward(s)?|upward(s)?|downward(s)?|horizontal(ly)?|vertical(ly)?)\b",
+    re.IGNORECASE,
+)
+
+
+def strip_direction_claims(llm_sections):
+    """
+    Strips any bullet that both (a) references the dx/dy/dz motion axes
+    and (b) asserts a specific physical direction for them, anywhere in
+    the bullet's full (wrapped) text. Notes how many were removed instead
+    of silently deleting them. Operates on whole bullets via
+    _group_into_bullets — see its docstring for why (this filter used to
+    test one physical line at a time, which could miss a claim entirely
+    when the axis name and the direction word wrapped onto different
+    lines).
+    """
+
+    chunks = _group_into_bullets(llm_sections.splitlines())
+    out = []
+    removed = 0
+
+    for chunk in chunks:
+        joined = " ".join(l.strip() for l in chunk)
+        if _AXIS_PATTERN.search(joined) and _DIRECTION_TERMS_PATTERN.search(joined):
+            removed += 1
+            continue
+        out.extend(chunk)
+
+    result = "\n".join(out)
+
+    if removed:
+        result += (
+            f"\n\n[Note: {removed} line(s) were removed because they "
+            f"asserted a specific physical direction (e.g. 'forward', "
+            f"'sideways') for a motion axis whose real-world direction "
+            f"isn't specified in the data.]"
+        )
+
+    return result
+
+
+def build_fact_sentence(f):
+    """
+    States what's actually known about one feature as plain fact, written
+    entirely in Python: what it measures, its value, its magnitude label,
+    and its direction. This is the same idea as build_summary_section,
+    extended to every feature instead of just the top one — because
+    testing showed the LLM will occasionally state the WRONG direction
+    for a feature (e.g. saying dx "increased" the error when it was
+    given as decreasing it), directly contradicting the facts it was
+    handed. A keyword filter can't reliably catch a wrong direction
+    without also flagging correctly-hedged, correctly-signed sentences
+    (e.g. "unlikely to have increased... it decreases" is CORRECT but
+    contains the word "increased"). The only reliable fix is to never
+    let the model state the direction at all — see build_reasons_section.
+    """
+
+    raw_name = f.get("raw_name", "")
+    description = describe_feature(raw_name)
+    magnitude_label = describe_magnitude(raw_name, f["value"])
+    direction = "increases" if f["shap"] > 0 else "decreases"
+    magnitude_clause = f" ({magnitude_label})" if magnitude_label else ""
+
+    return (
+        f"{f['name']}: {description}. Measured value "
+        f"{f['value']:.3f}{magnitude_clause} — this {direction} the "
+        f"predicted error."
+    )
+
+
+_DIRECTION_STEM_PATTERN = re.compile(r"\b(increas\w*|decreas\w*)\b", re.IGNORECASE)
+
+_UNGROUNDED_HEDGE_TERMS = [
+    "compensation mechanism", "error model", "correction system",
+    "compensat", "over-compensat", "overcompensat",
+    "solid object", "reflective", "unobstructed", "clear opening",
+    "should have", "should typically", "should normally",
+    "algorithm", "slam", "hardware", "software", "firmware",
+]
+
+
+def _split_sentences(text):
+    if not text:
+        return []
+    return [s.strip() for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()]
+
+
+def clean_hedge_sentence(hedge_text):
+    """
+    The LLM's hedge text is only supposed to propose WHY a feature had
+    its effect — never restate whether it increased/decreased the error
+    (build_fact_sentence already states that, correctly, in Python) and
+    never invent a system component or physical property. If the model
+    does either anyway, drop just that sentence rather than the whole
+    hedge, and drop the whole hedge (falling back to no elaboration,
+    which is always safe) only if nothing is left.
+    """
+
+    kept = []
+    for sentence in _split_sentences(hedge_text):
+        lower = sentence.lower()
+        if _DIRECTION_STEM_PATTERN.search(sentence):
+            continue
+        if any(term in lower for term in _UNGROUNDED_HEDGE_TERMS):
+            continue
+        kept.append(sentence)
+
+    return " ".join(kept).strip()
+
+
+def parse_numbered_reasons(llm_text):
+    """
+    Parses the LLM's numbered "Reasons for Localization Error" list (see
+    build_direct_prompt for the requested format) into {number: text},
+    joining any wrapped continuation lines for that number. Returns an
+    empty dict if the model didn't follow the numbered format at all, so
+    the caller can degrade to fact-only bullets instead of crashing.
+    """
+
+    match = re.search(
+        r"Reasons for Localization Error(.*?)(?:\nRecommendations\b|\Z)",
+        llm_text,
+        re.DOTALL | re.IGNORECASE,
+    )
+    if not match:
+        return {}
+
+    body = match.group(1)
+    items = {}
+    starts = list(re.finditer(r"(?m)^\s*(\d+)\.\s*", body))
+
+    for i, m in enumerate(starts):
+        num = int(m.group(1))
+        start = m.end()
+        end = starts[i + 1].start() if i + 1 < len(starts) else len(body)
+        items[num] = re.sub(r"\s+", " ", body[start:end]).strip()
+
+    return items
+
+
+def build_reasons_section(top_features, llm_text):
+    """
+    Assembles "Reasons for Localization Error" as one Python-written fact
+    sentence per feature (always correct, by construction) followed by
+    the LLM's hedge sentence for that feature (cleaned of any restated
+    direction or ungrounded claim). If the LLM's hedge for a feature is
+    missing or gets fully cleaned away, the bullet is just the fact
+    sentence — always safe, never wrong.
+    """
+
+    parsed = parse_numbered_reasons(llm_text)
+    lines = ["Reasons for Localization Error", ""]
+
+    for i, f in enumerate(top_features, start=1):
+        fact = build_fact_sentence(f)
+        hedge = clean_hedge_sentence(parsed.get(i, ""))
+        lines.append(f"- {fact} {hedge}".rstrip() if hedge else f"- {fact}")
+
+    return "\n".join(lines)
+
+
+def extract_recommendations_section(llm_text):
+    match = re.search(r"(Recommendations.*)", llm_text, re.DOTALL | re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    return "Recommendations\n\n(No recommendations were generated for this frame.)"
 
 
 def describe_magnitude(raw_name, value):
@@ -318,9 +642,17 @@ influence (item 1 = largest impact, do not reorder or re-rank them):
 Write ONLY these two sections, using ONLY the features above:
 
 Reasons for Localization Error
-- For each feature above, explain in your own words what it means and
-  why it plausibly had the effect shown. If the direction is
-  counter-intuitive, say so explicitly.
+- For each feature above, in the SAME numbered order, write EXACTLY ONE
+  hedged sentence proposing a plausible reason WHY it might have had
+  this effect (see the GOOD/BAD examples above for what "hedged" means).
+- Do NOT restate the feature's value, magnitude, or whether it increased
+  or decreased the predicted error — that has already been stated
+  elsewhere. State ONLY the hypothesis for WHY, nothing else.
+- Format exactly like this (one numbered line per feature, matching the
+  numbering above):
+  1. <hedged reason for feature 1>
+  2. <hedged reason for feature 2>
+  ...
 
 Recommendations
 - Practical, operational recommendations that follow from the features
@@ -338,9 +670,15 @@ already been handled elsewhere.
 
 def generate_report_direct(prediction, top_features, risk_level=None):
     """
-    Assembles the final report from a deterministic Python-written
-    Summary + Risk Level, and an LLM-written Reasons + Recommendations.
-    See build_summary_section for why the summary isn't left to the LLM.
+    Assembles the final report from:
+      - a deterministic Python-written Summary + Risk Level
+        (see build_summary_section)
+      - a deterministic Python-written fact per feature in Reasons, with
+        an LLM-written, cleaned hedge sentence appended to each
+        (see build_reasons_section — this is what prevents the LLM from
+        ever stating a feature's direction incorrectly)
+      - an LLM-written Recommendations section, filtered for ungrounded
+        claims and physical-direction assertions
     """
 
     if risk_level is None:
@@ -349,14 +687,21 @@ def generate_report_direct(prediction, top_features, risk_level=None):
     summary_section = build_summary_section(prediction, top_features, risk_level)
 
     prompt = build_direct_prompt(prediction, top_features)
-    llm_sections = _chat(DIRECT_SYSTEM_PROMPT, prompt).strip()
-    llm_sections = sanitize_recommendations(llm_sections)
+    llm_text = _chat(DIRECT_SYSTEM_PROMPT, prompt).strip()
+
+    reasons_section = build_reasons_section(top_features, llm_text)
+
+    recommendations_section = extract_recommendations_section(llm_text)
+    recommendations_section = strip_direction_claims(recommendations_section)
+    recommendations_section = sanitize_recommendations(recommendations_section)
 
     return (
         "====================================================\n\n"
         f"{summary_section}\n\n"
         "====================================================\n\n"
-        f"{llm_sections}\n\n"
+        f"{reasons_section}\n\n"
+        "====================================================\n\n"
+        f"{recommendations_section}\n\n"
         "====================================================\n\n"
         f"Risk Level\n\n{risk_level}\n\n"
         "===================================================="
