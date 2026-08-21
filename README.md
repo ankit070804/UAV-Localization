@@ -19,8 +19,6 @@ flowchart TD
 
 The LLM is given the raw top-N SHAP features for a prediction (name, measured value, and signed contribution, translated to a human-readable label via `class_names.py`) and interprets them directly — it reconciles each feature's *actual* direction for that specific frame instead of reciting a fixed, per-feature template. A guardrail in the system prompt still keeps it grounded: it may reason about *why* a feature had its effect, but it cannot invent a feature, value, or direction that wasn't supplied.
 
-> An earlier version of this project routed SHAP output through a separate `reasoning_engine.py` module that pre-computed a fixed fact/recommendation per feature before handing it to the LLM. That module has been removed — the LLM now reasons directly over the SHAP values itself (see `llm_engine.py` and `test_system.py`).
-
 ---
 
 ## Project structure
