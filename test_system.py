@@ -91,7 +91,7 @@ print("\n====================================================")
 print(" UAV LOCALIZATION EXPLANATION SYSTEM")
 print("====================================================")
 
-print(f"\nPredicted Localization Error : {prediction:.3f} meters")
+print(f"\nPredicted Localization Error : {prediction:.3f} meters\n")
 
 # =====================================================
 # SHAP
@@ -112,22 +112,22 @@ importance = importance.sort_values("ABS", ascending=False)
 
 top = importance.head(5)
 
-print("\nTop Influencing Factors\n")
-print(top[["Feature", "Value", "SHAP"]])
+# The raw feature/value/SHAP numbers below are computed for the LLM's
+# internal understanding only (see llm_engine.build_prompt) — they are
+# intentionally NOT printed to the console. The user-facing output is
+# the plain-English report from generate_report() further down.
 
 # =====================================================
-# LLM REPORT — direct SHAP interpretation
+# LLM REPORT
 #
-# No reasoning_engine.py in this path: the LLM gets the raw top-N
-# SHAP features (name, value, signed contribution) for THIS frame
-# and does its own interpretation, instead of rephrasing a fixed
-# per-feature template. Feature names are translated to
-# human-readable form (e.g. "class_180_percent" -> "Carpet") via
-# class_names.py, but nothing about their meaning is pre-decided
-# for the LLM.
+# The LLM reads the top SHAP features for THIS frame (name, value,
+# signed contribution — translated to human-readable form via
+# class_names.py) and synthesizes them into a single plain-English
+# explanation plus recommendations. See generate_report() in
+# llm_engine.py.
 # =====================================================
 
-from llm_engine import generate_report_direct
+from llm_engine import generate_report
 
 top_features_for_llm = [
     {
@@ -139,11 +139,7 @@ top_features_for_llm = [
     for _, row in top.iterrows()
 ]
 
-print("\n====================================================")
-print("LLM Generated Report (direct SHAP interpretation)")
-print("====================================================\n")
-
-report = generate_report_direct(
+report = generate_report(
     prediction,
     top_features_for_llm
 )
