@@ -47,8 +47,10 @@ The LLM is given the raw top-N SHAP features for a prediction (name, measured va
 | `test_system.py` | End-to-end demo: loads a real frame from the configured demo sequence, predicts error, runs SHAP, and calls `llm_engine.generate_report_direct()` to produce the full report |
 | `requirements.txt` | Python package dependencies |
 
-**Generated artifacts** (produced by the scripts above, not hand-written, and excluded from version control via `.gitignore`):
+**Generated artifacts** (produced by the scripts above, not hand-written):
 `all_features.csv`, `all_localization_labels.csv`, `training_dataset_all.csv`, `feature_importance.csv`, `evaluation_feature_importance.csv`, `evaluation_results.csv`, `loso_results.csv`, `test_predictions.csv`, `rf_localization.pkl`, `feature_names.pkl`, `test_split_indices.pkl`, and plots (`actual_vs_predicted.png`, `error_distribution.png`, `feature_importance.png`, `shap_bar.png`, `shap_summary.png`, `sample_error.png`, and the `graphs/` folder from `graphs.py`).
+
+`.gitignore` excludes these patterns (`*.csv`, `*.pkl`, `*.png`) going forward, but a pretrained model and example artifacts (`rf_localization.pkl`, `training_dataset_all.csv`, the plots, etc.) are already committed to the repo — so `evaluation_model.py`, `graphs.py`, and `test_system.py`'s model-loading step work immediately without retraining. `test_split_indices.pkl` is the one listed artifact **not** currently committed.
 
 ---
 
@@ -158,9 +160,3 @@ python llm_engine.py
 - The LLM (`llm_engine.py`) is explicitly instructed never to mention SHAP, Random Forest, machine learning, ORB-SLAM, SIFT, or SURF by name in the generated report — it only produces a clean, professional explanation for an end user based on the supplied SHAP-derived numbers.
 - `class_names.py`'s segmentation label mapping is a best-effort placeholder — TartanAir's per-scene segmentation legend for this environment hasn't been verified yet, so treat these names as approximate, not ground truth.
 - Dataset paths default to a placeholder Windows path in `config.py` — override with the `UAV_DATASET_ROOT` environment variable before running anything (see Setup above).
-
----
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
